@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <title>Админ-панель</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --font: "Inter", sans-serif;
+      --bg: #fff;
+      --text: #111;
+      --muted: #888;
+      --border: #eee;
+      --accent-bg: #f9f9f9;
+      --success: #d4edda;
+      --error: #f8d7da;
+    }
+
+    body {
+      margin: 0; padding: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      margin-bottom: 1rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+
+    th, td {
+      padding: 0.6rem 0.75rem;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+    }
+
+    td small.key-id {
+      color: var(--muted);
+      font-size: 0.75rem;
+    }
+
+    tr:nth-child(even) {
+      background-color: var(--accent-bg);
+    }
+
+    .editable:focus {
+      outline: 2px solid #007bff;
+      background-color: #eef6ff;
+    }
+
+    .lang-code {
+      margin-left: 0.3rem;
+      color: var(--muted);
+    }
+
+    .lang-filter {
+      margin-bottom: 1rem;
+    }
+
+    #status-message {
+      margin-bottom: 1rem;
+      padding: 0.75rem 1rem;
+      border-radius: 6px;
+      display: none;
+    }
+
+    #status-message.success {
+      background-color: var(--success);
+      color: #155724;
+    }
+
+    #status-message.error {
+      background-color: var(--error);
+      color: #721c24;
+    }
+
+    #confirm-block {
+      display: none;
+      margin: 1rem 0;
+    }
+
+    #confirm-block button {
+      padding: 0.5rem 1rem;
+      font-size: 1rem;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+  @media (min-width: 769px) {
+    .table-wrapper {
+      overflow-x: auto;
+      width: 100%;
+    }
+
+    .table-wrapper table {
+      min-width: 1000px;
+      table-layout: fixed;
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+
+    /* Фиксируем первый столбец */
+    .table-wrapper td:first-child,
+    .table-wrapper th:first-child {
+      position: sticky;
+      width: 250px;
+      background-color: white;
+      left: 0;
+      z-index: 2;
+    }
+
+    /* Поверх других ячеек */
+    .table-wrapper th:first-child {
+      z-index: 3;
+    }
+
+    .lang-col {
+      width: 290px;
+    }
+  }
+
+    @media (max-width: 768px) {
+      table, thead, tbody, th, td, tr {
+        display: block;
+      }
+
+      thead {
+        display: none;
+      }
+
+      tr {
+        margin-bottom: 1rem;
+        padding: 0.5rem;
+        border: 1px solid var(--border);
+        background: var(--bg);
+      }
+
+      td {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 0.5rem 0;
+      }
+
+      td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: var(--muted);
+        margin-bottom: 0.25rem;
+        margin-right: 0.45rem;
+        font-size: 0.8rem;
+      }
+
+      td small.key-id {
+        display: none;
+      }
+
+      .lang-code {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  {% extends "base.html" %}
+
+  {% block title %}Переводы – Админ-панель{% endblock %}
+
+  {% block content %}
+
+  <h1>📘 Переводы</h1>
+
+  <div class="lang-filter">
+    <label for="lang-select">Показать переводы только для языка:</label>
+    <select id="lang-select">
+      <option value="all">Все</option>
+      {% for lang in langs %}
+        <option value="{{ lang.code }}">{{ flags.get(lang.code, "🏳") }} {{ lang.name_ru }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="lang-filter">
+    <form method="get">
+      <label for="add-lang">Добавить язык:</label>
+      <select name="add" id="add-lang">
+        <option value="">Выберите язык...</option>
+        {% for lang in missing_langs %}
+          <option value="{{ lang.code }}">{{ flags.get(lang.code, "🏳") }} {{ lang.name_ru }}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+
+  <div id="status-message"></div>
+  <div id="confirm-block">
+    <p>Сохранить в базу?</p>
+    <button id="confirm-save">Сохранить</button>
+  </div>
+
+<div class="table-wrapper">
+  <table>
+    <thead>
+      <tr>
+        <th>Описание</th>
+        {% for lang in langs %}
+          <th class="lang-head lang-col" data-lang-code="{{ lang.code }}">
+            {{ flags.get(lang.code, "🏳") }}
+            <span class="lang-code">{{ lang.name_ru }}</span>
+            {% if missing_count[lang.code] > 0 %}
+              <button class="btn-translate-header"
+                      data-lang="{{ lang.code }}">
+                🔄 Перевести {{ missing_count[lang.code] }}
+              </button>
+            {% endif %}
+          </th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for key, row in translations.items() %}
+        <tr>
+          <td data-label="Описание">
+            <strong>{{ key_descriptions.get(key, '–') }}</strong><br>
+            <small class="key-id">{{ key }}</small>
+          </td>
+
+          {# Для уже существующих языков – редактируемые ячейки #}
+          {% for lang in langs %}
+            <td class="lang-col editable"
+                data-key="{{ key }}"
+                data-lang="{{ lang.code }}"
+                data-label="{{ flags.get(lang.code, '🏳') }}"
+                contenteditable="true">
+              {{ row.get(lang.code, '') }}
+            </td>
+          {% endfor %}
+
+          {# Для отсутствующих – пустые ячейки, будут заполняться после перевода #}
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% raw %}
+<script>
+  function showMessage(text, type = 'success') {
+    const el = document.getElementById("status-message");
+    el.textContent = text;
+    el.className = type === 'error' ? 'error' : 'success';
+    el.style.display = 'block';
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    // Фильтр по селекту языка 
+    document.getElementById("lang-select").addEventListener("change", () => {
+      const sel = document.getElementById("lang-select").value;
+      document.querySelectorAll(".lang-col").forEach(col => {
+        col.style.display = (sel === "all" || col.dataset.langCode === sel)
+          ? "table-cell" : "none";
+      });
+    });
+
+    // Логика «добавить язык» – только редирект
+    const addLang = document.getElementById("add-lang");
+    if (addLang) {
+      addLang.addEventListener("change", () => {
+        const v = addLang.value;
+        if (!v) return;
+        showMessage("🔄 Загружаем перевод через ChatGPT...");
+        const u = new URL(window.location.href);
+        u.searchParams.set("add", v);
+        window.location.href = u.toString();
+      });
+    }
+
+    // Если в URL есть ?add=xx – показываем кнопку «Сохранить»
+    const params = new URLSearchParams(window.location.search);
+    const added = params.get("add");
+    let currentLang = null;
+    if (added) {
+      currentLang = added;
+      document.getElementById("confirm-block").style.display = "block";
+      const saveBtn = document.getElementById("confirm-save");
+      saveBtn.disabled = false;
+      showMessage("✅ Переводы получены. Подтвердите сохранение.");
+    }
+
+    // Кнопки «🔄 Перевести N» в заголовке
+    document.querySelectorAll(".btn-translate-header").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const lang = btn.dataset.lang;
+        currentLang = lang;
+        showMessage(`🔄 Загружаем перевод через ChatGPT...`);
+        try {
+          const resp = await fetch(`/translations/translate_missing?lang=${lang}`);
+          if (!resp.ok) throw new Error("Network error");
+          const { translations } = await resp.json();
+          for (const [key, text] of Object.entries(translations)) {
+            const cell = document.querySelector(`td[data-key="${key}"][data-lang="${lang}"]`);
+            if (cell) cell.textContent = text.replace(/\\n/g, "\n");
+          }
+          document.getElementById("confirm-block").style.display = "block";
+          document.getElementById("confirm-save").disabled = false;
+          showMessage(`✅ Переводы получены. Подтвердите сохранение.`);
+        } catch (err) {
+          console.error(err);
+          showMessage("❌ Не удалось получить переводы", "error");
+        }
+      });
+    });
+
+    // Кнопка «Сохранить»
+    const saveBtn = document.getElementById("confirm-save");
+    let isSaving = false;
+    saveBtn.addEventListener("click", async () => {
+      if (isSaving || !currentLang) {
+        showMessage("❌ Сначала нажмите «🔄 Перевести» в нужном столбце", "error");
+        return;
+      }
+      isSaving = true;
+      saveBtn.disabled = true;
+      const orig = saveBtn.innerText;
+      saveBtn.innerText = "⏳ Сохраняем...";
+      const translations = {};
+      document.querySelectorAll(`td[data-lang="${currentLang}"]`).forEach(cell => {
+        const key = cell.dataset.key;
+        const raw = cell.innerText.trim();
+        if (raw) {
+          translations[key] = raw.replace(/\n{3,}/g, "\n\n").replace(/\n/g, "\\n");
+        }
+      });
+      try {
+        const res = await fetch("/translations/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lang: currentLang, translations })
+        });
+        if (!res.ok) throw new Error("Save failed");
+        showMessage("✅ Переводы успешно сохранены");
+          setTimeout(() => {
+            window.location.href = window.location.origin + "/translations";
+          }, 1000);
+      } catch (err) {
+        console.error(err);
+        showMessage("❌ Ошибка при сохранении перевода", "error");
+        saveBtn.disabled = false;
+        saveBtn.innerText = orig;
+        isSaving = false;
+      }
+    });
+
+    // Существующий код «по blur» оставляем без изменений
+    document.querySelectorAll(".editable").forEach(cell => {
+      cell.addEventListener("blur", async () => {
+        const key = cell.dataset.key;
+        const lang = cell.dataset.lang;
+        const rawText = cell.innerText.trim();
+        const text = rawText.replace(/\n{3,}/g, "\n\n").replace(/\n/g, "\\n");
+        try {
+          const resp = await fetch("/update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ key, lang, text })
+          });
+          if (!resp.ok) throw new Error();
+          showMessage("✅ Перевод сохранён");
+          setTimeout(() => {
+            window.location.href = window.location.origin + "/translations";
+          }, 1000);
+        } catch {
+          showMessage("❌ Не удалось сохранить", "error");
+        }
+      });
+    });
+  });
+</script>
+{% endraw %}
+
+  {% endblock %}
+</body>
+</html>

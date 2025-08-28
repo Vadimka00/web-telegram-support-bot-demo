@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <title>Админ-панель</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --bg: #f9f9fb;
+      --text: #2d2d2d;
+      --primary: #0066ff;
+      --muted: #777;
+      --table-head: #e9efff;
+      --table-row: #ffffff;
+      --table-alt: #f4f6fa;
+      --border: #ddd;
+      --radius: 6px;
+    }
+
+    body {
+      margin: 0; padding: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      overflow-x: hidden;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      margin-bottom: 1rem;
+    }
+
+    .stats {
+      margin-bottom: 1rem;
+      font-size: 0.95rem;
+    }
+
+    .search {
+      margin: 1.5rem 0;
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .search input[type="text"] {
+      flex: 1;
+      padding: 0.6rem 0.8rem;
+      font-size: 0.95rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      outline: none;
+    }
+
+    .search button {
+      padding: 0.6rem 1rem;
+      font-size: 0.95rem;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+
+    th, td {
+      padding: 0.75rem;
+      font-size: 0.9rem;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+    }
+
+    th {
+      background: var(--table-head);
+      color: #444;
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+    }
+
+    tr:nth-child(even) {
+      background: var(--table-alt);
+    }
+
+    select {
+      font-size: 0.9rem;
+      padding: 0.3rem;
+      border-radius: var(--radius);
+    }
+
+    td[data-label="Язык"] {
+      white-space: nowrap;
+    }
+
+    /* Внешний контейнер таблицы: */
+    .table-wrapper {
+      overflow-x: auto;      /* Таблица скроллится внутри себя */
+      -webkit-overflow-scrolling: touch;
+    }
+    /* Медиазапрос для мобильных */
+      @media (max-width: 768px) {
+        thead, th { display: none; }
+
+        tr {
+          display: grid;
+          grid-template-areas:
+            "id   role"
+            "user user"
+            "name name"
+            "lang lang";
+          grid-template-columns: auto 1fr;
+          gap: 0.5rem;
+          margin-bottom: 1rem;
+          padding: 0.75rem;
+          background: #fff;
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+        }
+
+        td {
+          padding: 0.5rem;
+          font-size: 0.9rem;
+          border: none;
+        }
+
+        /* Расставляем ячейки по областям */
+        td[data-label="ID"]       { grid-area: id; }
+        td[data-label="Роль"]     { grid-area: role; }
+        td[data-label="Username"] { grid-area: user; }
+        td[data-label="Имя"]      { grid-area: name; }
+        td[data-label="Язык"]     { grid-area: lang; }
+      }
+  </style>
+</head>
+<body>
+
+    {% extends "base.html" %}
+
+    {% block title %}Пользователи – Админ-панель{% endblock %}
+    
+    {% block content %}
+
+  <h1>👥 Пользователи</h1>
+
+  <div class="stats">
+    <strong>Всего:</strong> {{ total }} |
+  {% for lang, count in lang_counts.items() %}
+    <strong>{{ flags.get(lang, '🏳') }}</strong> {{ lang_names.get(lang, lang) }}: {{ count }}
+  {% endfor %}
+  </div>
+
+<form class="search" method="get" action="/users">
+  <input type="text" name="q" placeholder="Поиск по имени или username" value="{{ query or '' }}">
+
+  <select name="role">
+    <option value="">Все роли</option>
+    <option value="user" {% if selected_role == 'user' %}selected{% endif %}>user</option>
+    <option value="moderator" {% if selected_role == 'moderator' %}selected{% endif %}>moderator</option>
+    <option value="admin" {% if selected_role == 'admin' %}selected{% endif %}>admin</option>
+  </select>
+</form>
+
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Username</th>
+        <th>Имя</th>
+        <th>Язык</th>
+        <th>Роль</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for user in users %}
+        <tr>
+          <td data-label="ID">{{ user.id }}</td>
+          <td data-label="Username">
+            {% if user.username %}
+              <a href="https://t.me/{{ user.username }}" target="_blank">
+                @{{ user.username }}
+              </a>
+            {% else %}
+              –
+            {% endif %}
+          </td>
+          <td data-label="Имя">{{ user.full_name }}</td>
+          <td data-label="Язык">
+            <form method="post" action="/users/set-language">
+              <input type="hidden" name="user_id" value="{{ user.id }}">
+              {% set available_codes = available_languages | map(attribute="code") | list %}
+              {% set lang_is_empty = not user.language_code %}
+              {% set lang_is_unknown = user.language_code and user.language_code not in available_codes %}
+              
+              {% if lang_is_empty %}
+                <select disabled>
+                  <option selected>🏳 Не указан</option>
+                </select>
+              {% else %}
+                <select name="lang" onchange="this.form.submit()">
+                  {# Показываем доступные языки #}
+                  {% for lang in available_languages %}
+                    <option value="{{ lang.code }}"
+                      {% if user.language_code == lang.code %}selected{% endif %}>
+                      {{ flags.get(lang.code, '🏳') }} {{ lang_names.get(lang.code, lang.code) }}
+                    </option>
+                  {% endfor %}
+                </select>
+              {% endif %}
+            </form>
+          </td>
+          <td data-label="Роль">
+            <form method="post" action="/users/set-role">
+              <input type="hidden" name="user_id" value="{{ user.id }}">
+              <select name="role" onchange="this.form.submit()">
+                {% for r in ["user", "moderator", "admin"] %}
+                  <option value="{{ r }}" {% if user.role == r %}selected{% endif %}>{{ r }}</option>
+                {% endfor %}
+              </select>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div style="margin-top: 1.5rem; text-align: center;">
+    {% if total_pages > 1 %}
+      {% for p in range(1, total_pages + 1) %}
+        {% if p == page %}
+          <strong style="margin: 0 4px;">[{{ p }}]</strong>
+        {% else %}
+          <a href="?page={{ p }}{% if query %}&q={{ query }}{% endif %}{% if selected_role %}&role={{ selected_role }}{% endif %}" style="margin: 0 4px;">{{ p }}</a>
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+  </div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const input = document.querySelector("input[name='q']");
+    const roleSelect = document.querySelector("select[name='role']");
+    const form = document.querySelector(".search");
+
+    // Автосабмит при выборе роли
+    roleSelect.addEventListener("change", () => {
+      form.submit();
+    });
+
+    // Задержка при вводе текста (debounce)
+    let timeout;
+    input.addEventListener("input", () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => {
+        form.submit();
+      }, 2000);
+    });
+  });
+</script>
+
+  {% endblock %}
+
+</body>
+</html>
